@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>WebRTC P2P Test</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        #status { color: gray; font-size: 0.9em; }
+    </style>
+</head>
+<body>
+
+<h2>Pigeon Post: WebRTC + DataChannel</h2>
+<button id="startBtn" onclick="start()">1. Start Call (Send Offer)</button>
+<button id="sendBtn" onclick="sendMessage()" disabled>2. Send P2P Message</button>
+<p id="status">Status: Disconnected</p>
+
+<script>
+const clientId = Math.random().toString(36).substring(2);
+const statusEl = document.getElementById('status');
+const ws = new WebSocket("ws://127.0.0.1:8000/ws/room/testroom/");
+
+let dataChannel = null;
+const iceQueue = []; // Очередь для кандидатов, пришедших слишком рано
+
+const pc = new RTCPeerConnection({
+    iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+});
+
+// --- 1. Работа с сообщениями (Data Channel) ---
+
+function setupDataChannel(channel) {
+    dataChannel = channel;
+    dataChannel.onopen = () => {
+        statusEl.innerText = "Status: P2P Connected!";
+        document.getElementById('sendBtn').disabled = false;
+    };
+    dataChannel.onmessage = (e) => alert("Received via P2P: " + e.data);
+}
+
+// Если мы создаем канал (Initiator)
+dataChannel = pc.createDataChannel("chat");
+setupDataChannel(dataChannel);
+
+// Если канал создают нам (Receiver)
+pc.ondatachannel = (event) => setupDataChannel(event.channel);
+
+// --- 2. Сигналинг (WebSocket) ---
+
+ws.onopen = () => statusEl.innerText = "Status: WebSocket Connected";
+
+ws.onmessage = async (event) => {
+    const data = JSON.parse(event.data);
+    if (data.sender === clientId) return; // Игнорим свои сообщения
+
+    console.log("Inbound signaling:", data.type);
+
+    if (data.type === "offer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.payload));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+
+        sendSignal("answer", answer);
+        processIceQueue(); // Теперь можно обработать накопленные ICE
+    }
+
+    else if (data.type === "answer") {
+        await pc.setRemoteDescription(new RTCSessionDescription(data.payload));
+        processIceQueue();
+    }
+
+    else if (data.type === "ice") {
+        // Если remoteDescription еще не готов, кладем в очередь
+        if (!pc.remoteDescription || !pc.remoteDescription.type) {
+            iceQueue.push(data.payload);
+        } else {
+            await pc.addIceCandidate(new RTCIceCandidate(data.payload));
+        }
+    }
+};
+
+// --- 3. Функции-помощники ---
+
+async function start() {
+    if (ws.readyState !== WebSocket.OPEN) return alert("Waiting for WS...");
+
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    sendSignal("offer", offer);
+}
+
+function sendSignal(type, payload) {
+    ws.send(JSON.stringify({ type, sender: clientId, payload }));
+}
+
+function sendMessage() {
+    if (dataChannel && dataChannel.readyState === "open") {
+        dataChannel.send("Hello from " + clientId);
+    }
+}
+
+// Обработка ICE-кандидатов
+pc.onicecandidate = (event) => {
+    if (event.candidate) sendSignal("ice", event.candidate);
+};
+
+async function processIceQueue() {
+    while (iceQueue.length > 0) {
+        const candidate = iceQueue.shift();
+        await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    }
+}
+
+</script>
+</body>
+</html>

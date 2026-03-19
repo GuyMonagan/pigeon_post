@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>WebRTC test</title>
+</head>
+
+<body>
+
+<h2>Pigeon Post test</h2>
+
+<button onclick="start()">Start call</button>
+
+<script>
+
+const clientId = Math.random().toString(36).substring(2)
+
+const ws = new WebSocket("ws://127.0.0.1:8000/ws/room/testroom/")
+
+const pc = new RTCPeerConnection({
+  iceServers: [
+    { urls: "stun:stun.l.google.com:19302" }
+  ]
+})
+
+pc.onicecandidate = (event) => {
+  if (event.candidate) {
+    ws.send(JSON.stringify({
+      type: "ice",
+      sender: clientId,
+      payload: event.candidate
+    }))
+  }
+}
+
+ws.onmessage = async (event) => {
+
+  const data = JSON.parse(event.data)
+
+  console.log("got:", data)
+
+  if (data.sender === clientId) return
+
+if (data.type === "offer") {
+
+  if (pc.signalingState !== "stable") return
+
+  await pc.setRemoteDescription(data.payload)
+
+  const answer = await pc.createAnswer()
+  await pc.setLocalDescription(answer)
+
+  ws.send(JSON.stringify({
+    type: "answer",
+    sender: clientId,
+    payload: answer
+  }))
+}
+
+if (data.type === "answer") {
+
+  if (pc.signalingState !== "have-local-offer") return
+
+  await pc.setRemoteDescription(data.payload)
+
+}
+
+  if (data.type === "ice") {
+    try {
+      await pc.addIceCandidate(data.payload)
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+}
+
+async function start() {
+
+  const offer = await pc.createOffer()
+  await pc.setLocalDescription(offer)
+
+  ws.send(JSON.stringify({
+    type: "offer",
+    sender: clientId,
+    payload: offer
+  }))
+
+}
+
+</script>
+
+</body>
+</html>
