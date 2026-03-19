@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+{% load static %}
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pigeon Post</title>
+</head>
+
+<body>
+
+<h2>🕊️ Pigeon Post</h2>
+
+<p>Room: <span id="room"></span></p>
+<div id="participants">👥 ...</div>
+<p>Client: <span id="client"></span></p>
+
+<button id="copy-link">📎 Copy invite link</button>
+
+<button id="start-btn">📞 Start call</button>
+<div id="incoming-call" style="display:none; border:1px solid #ccc; padding:10px; margin-top:10px;">
+  <p>📞 Входящий звонок</p>
+  <button onclick="acceptCall()">Принять</button>
+  <button onclick="declineCall()">Отклонить</button>
+</div>
+
+<hr>
+
+<h3>💬 Chat</h3>
+
+<div id="chat-box"></div>
+
+<style>
+#chat-box {
+  border: 1px solid #ccc;
+  height: 150px;
+  overflow-y: auto;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+#chat-input {
+  width: 70%;
+  padding: 10px;
+}
+
+#send-btn {
+  padding: 10px 15px;
+}
+</style>
+
+<input id="chat-input" placeholder="message...">
+<button id="send-btn">Send</button>
+
+<hr>
+
+<p>PC state: <span id="pc-state"></span></p>
+<p>ICE state: <span id="ice-state"></span></p>
+
+<audio id="remote-audio" autoplay></audio>
+<script>
+  const ROOM_ID = "{{ room_id }}"
+</script>
+<script src="{% static 'js/app.js' %}"></script>
+</body>
