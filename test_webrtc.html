@@ -2,93 +2,136 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>WebRTC test</title>
+  <title>Pigeon Post WebRTC Test</title>
 </head>
-
 <body>
+  <h2>Pigeon Post test</h2>
 
-<h2>Pigeon Post test</h2>
+  <button id="start-btn">Start call</button>
 
-<button onclick="start()">Start call</button>
+  <p>Client ID: <span id="client-id"></span></p>
+  <p>PC state: <span id="pc-state">new</span></p>
+  <p>ICE state: <span id="ice-state">new</span></p>
 
-<script>
+  <audio id="remote-audio" autoplay></audio>
 
-const clientId = Math.random().toString(36).substring(2)
+  <script>
+    const clientId = Math.random().toString(36).substring(2);
+    document.getElementById("client-id").textContent = clientId;
 
-const ws = new WebSocket("ws://127.0.0.1:8000/ws/room/testroom/")
+    const ws = new WebSocket("ws://127.0.0.1:8000/ws/room/testroom/");
 
-const pc = new RTCPeerConnection({
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" }
-  ]
-})
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" }
+      ]
+    });
 
-pc.onicecandidate = (event) => {
-  if (event.candidate) {
-    ws.send(JSON.stringify({
-      type: "ice",
-      sender: clientId,
-      payload: event.candidate
-    }))
-  }
-}
+    let isInitiator = false;
+    let localStream = null;
 
-ws.onmessage = async (event) => {
+    const pcStateEl = document.getElementById("pc-state");
+    const iceStateEl = document.getElementById("ice-state");
+    const remoteAudio = document.getElementById("remote-audio");
+    const startBtn = document.getElementById("start-btn");
 
-  const data = JSON.parse(event.data)
+    pc.onconnectionstatechange = () => {
+      console.log("pc.connectionState:", pc.connectionState);
+      pcStateEl.textContent = pc.connectionState;
+    };
 
-  console.log("got:", data)
+    pc.oniceconnectionstatechange = () => {
+      console.log("pc.iceConnectionState:", pc.iceConnectionState);
+      iceStateEl.textContent = pc.iceConnectionState;
+    };
 
-  if (data.sender === clientId) return
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        ws.send(JSON.stringify({
+          type: "ice",
+          sender: clientId,
+          payload: event.candidate
+        }));
+      }
+    };
 
-if (data.type === "offer") {
+    pc.ontrack = (event) => {
+      console.log("remote track received", event.streams);
+      remoteAudio.srcObject = event.streams[0];
+    };
 
-  if (pc.signalingState !== "stable") return
+    async function ensureLocalAudio() {
+      if (localStream) return localStream;
 
-  await pc.setRemoteDescription(data.payload)
+      localStream = await navigator.mediaDevices.getUserMedia({
+        audio: true,
+        video: false
+      });
 
-  const answer = await pc.createAnswer()
-  await pc.setLocalDescription(answer)
+      for (const track of localStream.getTracks()) {
+        pc.addTrack(track, localStream);
+      }
 
-  ws.send(JSON.stringify({
-    type: "answer",
-    sender: clientId,
-    payload: answer
-  }))
-}
-
-if (data.type === "answer") {
-
-  if (pc.signalingState !== "have-local-offer") return
-
-  await pc.setRemoteDescription(data.payload)
-
-}
-
-  if (data.type === "ice") {
-    try {
-      await pc.addIceCandidate(data.payload)
-    } catch (e) {
-      console.error(e)
+      return localStream;
     }
-  }
 
-}
+    ws.onmessage = async (event) => {
+      const data = JSON.parse(event.data);
+      console.log("got:", data);
 
-async function start() {
+      if (data.sender === clientId) return;
 
-  const offer = await pc.createOffer()
-  await pc.setLocalDescription(offer)
+      if (data.type === "offer") {
+        if (isInitiator) return;
+        if (pc.signalingState !== "stable") return;
 
-  ws.send(JSON.stringify({
-    type: "offer",
-    sender: clientId,
-    payload: offer
-  }))
+        await ensureLocalAudio();
+        await pc.setRemoteDescription(data.payload);
 
-}
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
 
-</script>
+        ws.send(JSON.stringify({
+          type: "answer",
+          sender: clientId,
+          payload: answer
+        }));
+      }
 
+      if (data.type === "answer") {
+        if (!isInitiator) return;
+        if (pc.signalingState !== "have-local-offer") return;
+
+        await pc.setRemoteDescription(data.payload);
+      }
+
+      if (data.type === "ice") {
+        try {
+          await pc.addIceCandidate(data.payload);
+        } catch (e) {
+          console.error("ICE error:", e);
+        }
+      }
+    };
+
+    async function start() {
+      isInitiator = true;
+
+      await ensureLocalAudio();
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+
+      ws.send(JSON.stringify({
+        type: "offer",
+        sender: clientId,
+        payload: offer
+      }));
+    }
+
+    startBtn.addEventListener("click", () => {
+      start().catch(console.error);
+    });
+  </script>
 </body>
 </html>
