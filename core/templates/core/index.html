@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Pigeon Post</title>
+
+  <style>
+    body {
+      font-family: Arial;
+      text-align: center;
+      margin-top: 100px;
+    }
+
+    button {
+      padding: 15px 25px;
+      font-size: 18px;
+      cursor: pointer;
+      border-radius: 10px;
+      border: none;
+      background: #4CAF50;
+      color: white;
+    }
+
+    input {
+      padding: 10px;
+      width: 300px;
+      margin-top: 20px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h1>🕊️ Pigeon Post</h1>
+
+<form action="/create/" method="post">
+  {% csrf_token %}
+  <button type="submit">🚀 Создать комнату</button>
+</form>
+
+<br>
+
+<input id="room-input" placeholder="Вставь ссылку комнаты">
+<br><br>
+<button onclick="joinRoom()">Войти</button>
+
+<script>
+function joinRoom() {
+  const value = document.getElementById("room-input").value
+  if (!value) return
+
+  window.location.href = value
+}
+</script>
+
+</body>
+</html>
